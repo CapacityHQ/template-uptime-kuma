@@ -1,16 +1,33 @@
-ARG BASE_IMAGE=louislam/uptime-kuma:base2
+ARG BASE_IMAGE=louislam/uptime-kuma:base2@sha256:f83db3d20fd5b8c0a875d70c96c6e160b2f61b8d439a97c3c8486a8e2aa54e87
 
 ############################################
 # Build in Golang
 # Run npm run build-healthcheck-armv7 in the host first, otherwise it will be super slow where it is building the armv7 healthcheck
 # Check file: builder-go.dockerfile
 ############################################
-FROM louislam/uptime-kuma:builder-go AS build_healthcheck
+FROM louislam/uptime-kuma:builder-go@sha256:50e49d7f27f124a5a086c076387d5419aa3767d88bc2c16354ca52790f709865 AS build_healthcheck
+
+############################################
+# Build the frontend (Capacity)
+# Upstream builds dist/ on its release runner and copies the result into the Docker context
+# (.dockerignore keeps dist); a Capacity deploy builds from a plain checkout, so the image
+# builds the frontend itself and the build stage below copies it in.
+############################################
+FROM louislam/uptime-kuma:base2@sha256:f83db3d20fd5b8c0a875d70c96c6e160b2f61b8d439a97c3c8486a8e2aa54e87 AS build_dist
+USER node
+WORKDIR /app
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=1
+COPY --chown=node:node .npmrc .npmrc
+COPY --chown=node:node package.json package.json
+COPY --chown=node:node package-lock.json package-lock.json
+RUN npm ci
+COPY --chown=node:node . .
+RUN npm run build
 
 ############################################
 # Build in Node.js
 ############################################
-FROM louislam/uptime-kuma:base2 AS build
+FROM louislam/uptime-kuma:base2@sha256:f83db3d20fd5b8c0a875d70c96c6e160b2f61b8d439a97c3c8486a8e2aa54e87 AS build
 USER node
 WORKDIR /app
 
@@ -21,6 +38,7 @@ COPY --chown=node:node package-lock.json package-lock.json
 RUN npm ci --omit=dev
 COPY . .
 COPY --chown=node:node --from=build_healthcheck /app/extra/healthcheck /app/extra/healthcheck
+COPY --chown=node:node --from=build_dist /app/dist /app/dist
 RUN mkdir ./data
 
 ############################################
@@ -59,7 +77,7 @@ USER node
 ############################################
 # Build an image for testing pr
 ############################################
-FROM louislam/uptime-kuma:base2 AS pr-test2
+FROM louislam/uptime-kuma:base2@sha256:f83db3d20fd5b8c0a875d70c96c6e160b2f61b8d439a97c3c8486a8e2aa54e87 AS pr-test2
 WORKDIR /app
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=1
 
@@ -92,7 +110,7 @@ CMD ["npm", "run", "start-pr-test"]
 ############################################
 # Upload the artifact to Github
 ############################################
-FROM louislam/uptime-kuma:base2 AS upload-artifact
+FROM louislam/uptime-kuma:base2@sha256:f83db3d20fd5b8c0a875d70c96c6e160b2f61b8d439a97c3c8486a8e2aa54e87 AS upload-artifact
 WORKDIR /
 RUN apt update && \
     apt --yes install curl file

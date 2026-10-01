@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "apps": [
+    { "id": "web", "name": "Uptime Kuma", "primary": true, "cwd": ".", "command": "npm run dev" }
+  ],
+  "services": []
+}
